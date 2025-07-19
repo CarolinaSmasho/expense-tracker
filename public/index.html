@@ -14,6 +14,9 @@
     .section { margin-bottom: 40px; }
     nav { margin-bottom: 20px; }
     nav a { margin-right: 10px; }
+    .custom-calc label { display: inline-block; margin-right: 15px; }
+    .custom-calc input[type="checkbox"] { margin-left: 5px; }
+    .result { font-weight: bold; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -74,6 +77,12 @@
     </table>
   </div>
 
+  <div class="section">
+    <h2>Custom Balance Calculation</h2>
+    <div id="customCalc" class="custom-calc"></div>
+    <div id="customResult" class="result">Custom Balance: 0</div>
+  </div>
+
   <script>
     // Fetch and display accounts
     async function loadAccounts() {
@@ -89,12 +98,14 @@
         const tbody = document.getElementById('accountsBody');
         const fromSelect = document.getElementById('from_account');
         const toSelect = document.getElementById('to_account');
+        const customCalcDiv = document.getElementById('customCalc');
         tbody.innerHTML = '';
         fromSelect.innerHTML = '<option value="">Select Account</option>';
         toSelect.innerHTML = '<option value="">Select Account</option>';
+        customCalcDiv.innerHTML = '';
 
         accounts.forEach(account => {
-          // Update table
+          // Update accounts table
           const row = document.createElement('tr');
           row.innerHTML = `<td>${account.name}</td><td>${account.balance}</td>`;
           tbody.appendChild(row);
@@ -109,10 +120,43 @@
           optionTo.value = account.name;
           optionTo.textContent = account.name;
           toSelect.appendChild(optionTo);
+
+          // Add checkboxes for custom calculation
+          const calcDiv = document.createElement('div');
+          calcDiv.innerHTML = `
+            <label>
+              ${account.name} (Add)
+              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="add" data-balance="${account.balance}">
+            </label>
+            <label>
+              ${account.name} (Subtract)
+              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="subtract" data-balance="${account.balance}">
+            </label>
+          `;
+          customCalcDiv.appendChild(calcDiv);
         });
+
+        // Add event listeners for checkboxes
+        document.querySelectorAll('.calc-checkbox').forEach(checkbox => {
+          checkbox.addEventListener('change', updateCustomBalance);
+        });
+
+        updateCustomBalance();
       } catch (error) {
         console.error('Error loading accounts:', error);
       }
+    }
+
+    // Calculate and display custom balance
+    function updateCustomBalance() {
+      const checkboxes = document.querySelectorAll('.calc-checkbox:checked');
+      let total = 0;
+      checkboxes.forEach(checkbox => {
+        const balance = parseInt(checkbox.dataset.balance);
+        const action = checkbox.dataset.action;
+        total += action === 'add' ? balance : -balance;
+      });
+      document.getElementById('customResult').textContent = `Custom Balance: ${total}`;
     }
 
     // Load accounts on page load

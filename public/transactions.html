@@ -11,7 +11,11 @@
     th { background-color: #f2f2f2; }
     nav { margin-bottom: 20px; }
     nav a { margin-right: 10px; }
-    .accounts-balance { max-width: 200px; overflow-x: auto; }
+    .accounts-balance, .custom-balance { max-width: 200px; overflow-x: auto; white-space: nowrap; }
+    .error { color: red; }
+    .custom-calc label { display: inline-block; margin-right: 15px; }
+    .custom-calc input[type="checkbox"] { margin-left: 5px; }
+    .accounts-balance, .custom-balance {max-width: 200px; overflow-x: auto; overflow-wrap: break-word; word-break: break-all; white-space: normal;}
   </style>
 </head>
 <body>
@@ -21,6 +25,11 @@
   </nav>
 
   <h1>Transactions</h1>
+  <div id="error" class="error"></div>
+  <div class="section">
+    <h2>Custom Balance Calculation</h2>
+    <div id="customCalc" class="custom-calc"></div>
+  </div>
   <table id="transactionsTable">
     <thead>
       <tr>
@@ -34,45 +43,133 @@
         <th>Comment</th>
         <th>Created At</th>
         <th>Accounts Balance</th>
+        <th>Custom Balance</th>
       </tr>
     </thead>
     <tbody id="transactionsBody"></tbody>
   </table>
 
   <script>
+    let accounts = []; // Store account names for checkbox population
+
+    // Fetch accounts for custom calculation
+    async function loadAccounts() {
+      try {
+        const response = await fetch('/accounts');
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        accounts = await response.json();
+        console.log('Fetched accounts:', accounts);
+
+        const customCalcDiv = document.getElementById('customCalc');
+        customCalcDiv.innerHTML = '';
+
+        accounts.forEach(account => {
+          const calcDiv = document.createElement('div');
+          calcDiv.innerHTML = `
+            <label>
+              ${account.name} (Add)
+              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="add">
+            </label>
+            <label>
+              ${account.name} (Subtract)
+              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="subtract">
+            </label>
+          `;
+          customCalcDiv.appendChild(calcDiv);
+        });
+
+        // Add event listeners for checkboxes
+        document.querySelectorAll('.calc-checkbox').forEach(checkbox => {
+          checkbox.addEventListener('change', loadTransactions);
+        });
+      } catch (error) {
+        console.error('Error loading accounts:', error);
+        document.getElementById('error').textContent = 'Error loading accounts: ' + error.message;
+      }
+    }
+
     // Fetch and display transactions
     async function loadTransactions() {
       try {
         const response = await fetch('/transactions-data');
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
         const transactions = await response.json();
+        console.log('Fetched transactions:', transactions);
+
         const tbody = document.getElementById('transactionsBody');
+        const errorDiv = document.getElementById('error');
         tbody.innerHTML = '';
+        errorDiv.textContent = '';
+
+        if (!transactions || transactions.length === 0) {
+          errorDiv.textContent = 'No transactions found.';
+          return;
+        }
+
+        // Get selected accounts for custom calculation
+        const selectedAccounts = Array.from(document.querySelectorAll('.calc-checkbox:checked')).map(cb => ({
+          name: cb.dataset.account,
+          action: cb.dataset.action
+        }));
 
         transactions.forEach(txn => {
-          const accountsBalance = JSON.parse(txn.accounts_balance || '[]');
-          const balanceDisplay = accountsBalance.map(acc => `${acc.name}: ${acc.balance}`).join(', ');
+          let accountsBalance;
+          try {
+            accountsBalance = JSON.parse(txn.accounts_balance || '[]');
+            console.log(`Parsed accounts_balance for transaction ${txn.id}:`, accountsBalance);
+          } catch (e) {
+            console.error(`Error parsing accounts_balance for transaction ${txn.id}:`, e.message);
+            accountsBalance = [];
+          }
+
+          // Original accounts balance display
+          const balanceDisplay = accountsBalance.length > 0
+            ? accountsBalance.map(acc => `${acc.name}: ${acc.balance}`).join(', ')
+            : 'None';
+
+          // Calculate custom balance
+          let customBalance = 'Select accounts';
+          if (selectedAccounts.length > 0) {
+            customBalance = 0;
+            selectedAccounts.forEach(selected => {
+              const account = accountsBalance.find(acc => acc.name === selected.name);
+              if (account) {
+                customBalance += selected.action === 'add' ? account.balance : -account.balance;
+              }
+            });
+          }
+
           const row = document.createElement('tr');
           row.innerHTML = `
-            <td>${txn.id}</td>
-            <td>${txn.from_account}</td>
-            <td>${txn.to_account}</td>
-            <td>${txn.amount}</td>
-            <td>${txn.available_money}</td>
-            <td>${txn.type}</td>
-            <td>${txn.category}</td>
+            <td>${txn.id || 'N/A'}</td>
+            <td>${txn.from_account || 'N/A'}</td>
+            <td>${txn.to_account || 'N/A'}</td>
+            <td>${txn.amount || 0}</td>
+            <td>${txn.available_money || 0}</td>
+            <td>${txn.type || 'N/A'}</td>
+            <td>${txn.category || 'N/A'}</td>
             <td>${txn.comment || ''}</td>
-            <td>${txn.created_at}</td>
+            <td>${txn.created_at || 'N/A'}</td>
             <td class="accounts-balance">${balanceDisplay}</td>
+            <td class="custom-balance">${customBalance}</td>
           `;
           tbody.appendChild(row);
         });
       } catch (error) {
         console.error('Error loading transactions:', error);
+        document.getElementById('error').textContent = 'Error loading transactions: ' + error.message;
       }
     }
 
-    // Load transactions on page load
-    window.onload = loadTransactions;
+    // Load accounts and transactions on page load
+    window.onload = async () => {
+      await loadAccounts();
+      await loadTransactions();
+    };
   </script>
 </body>
 </html>
