@@ -40,7 +40,7 @@
       <select id="from_account" name="from_account" required>
         <option value="">Select Account</option>
       </select>
-      <label for="via_account">To Account:</label>
+      <label for="to_account">To Account:</label>
       <select id="to_account" name="to_account" required>
         <option value="">Select Account</option>
       </select>
@@ -79,7 +79,13 @@
     async function loadAccounts() {
       try {
         const response = await fetch('/accounts');
+        if (!response.ok) {
+          console.error('Error fetching accounts:', response.status);
+          return;
+        }
         const accounts = await response.json();
+        console.log('Fetched accounts:', accounts);
+
         const tbody = document.getElementById('accountsBody');
         const fromSelect = document.getElementById('from_account');
         const toSelect = document.getElementById('to_account');
