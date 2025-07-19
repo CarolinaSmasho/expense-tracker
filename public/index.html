@@ -111,6 +111,9 @@
         toSelect.innerHTML = '<option value="">Select Account</option>';
         customCalcDiv.innerHTML = '';
 
+        // Load saved selections from localStorage
+        const savedSelections = JSON.parse(localStorage.getItem('customBalanceSelections') || '[]');
+
         accounts.forEach(account => {
           // Update accounts table
           const row = document.createElement('tr');
@@ -130,14 +133,16 @@
 
           // Add checkboxes for custom calculation
           const calcDiv = document.createElement('div');
+          const isAddChecked = savedSelections.some(s => s.name === account.name && s.action === 'add');
+          const isSubtractChecked = savedSelections.some(s => s.name === account.name && s.action === 'subtract');
           calcDiv.innerHTML = `
             <label>
               ${account.name} (Add)
-              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="add" data-balance="${account.balance}">
+              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="add" data-balance="${account.balance}" ${isAddChecked ? 'checked' : ''}>
             </label>
             <label>
               ${account.name} (Subtract)
-              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="subtract" data-balance="${account.balance}">
+              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="subtract" data-balance="${account.balance}" ${isSubtractChecked ? 'checked' : ''}>
             </label>
           `;
           customCalcDiv.appendChild(calcDiv);
@@ -145,7 +150,10 @@
 
         // Add event listeners for checkboxes
         document.querySelectorAll('.calc-checkbox').forEach(checkbox => {
-          checkbox.addEventListener('change', updateCustomBalance);
+          checkbox.addEventListener('change', () => {
+            updateCustomBalance();
+            saveSelections();
+          });
         });
 
         updateCustomBalance();
@@ -164,6 +172,17 @@
         total += action === 'add' ? balance : -balance;
       });
       document.getElementById('customResult').textContent = `Custom Balance: ${total}`;
+    }
+
+    // Save checkbox selections to localStorage
+    function saveSelections() {
+      const checkboxes = document.querySelectorAll('.calc-checkbox:checked');
+      const selections = Array.from(checkboxes).map(cb => ({
+        name: cb.dataset.account,
+        action: cb.dataset.action
+      }));
+      localStorage.setItem('customBalanceSelections', JSON.stringify(selections));
+      console.log('Saved selections:', selections);
     }
 
     // Clear database

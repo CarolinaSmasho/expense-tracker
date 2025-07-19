@@ -65,16 +65,21 @@
         const customCalcDiv = document.getElementById('customCalc');
         customCalcDiv.innerHTML = '';
 
+        // Load saved selections from localStorage
+        const savedSelections = JSON.parse(localStorage.getItem('customBalanceSelections') || '[]');
+
         accounts.forEach(account => {
           const calcDiv = document.createElement('div');
+          const isAddChecked = savedSelections.some(s => s.name === account.name && s.action === 'add');
+          const isSubtractChecked = savedSelections.some(s => s.name === account.name && s.action === 'subtract');
           calcDiv.innerHTML = `
             <label>
               ${account.name} (Add)
-              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="add">
+              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="add" ${isAddChecked ? 'checked' : ''}>
             </label>
             <label>
               ${account.name} (Subtract)
-              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="subtract">
+              <input type="checkbox" class="calc-checkbox" data-account="${account.name}" data-action="subtract" ${isSubtractChecked ? 'checked' : ''}>
             </label>
           `;
           customCalcDiv.appendChild(calcDiv);
@@ -82,7 +87,10 @@
 
         // Add event listeners for checkboxes
         document.querySelectorAll('.calc-checkbox').forEach(checkbox => {
-          checkbox.addEventListener('change', loadTransactions);
+          checkbox.addEventListener('change', () => {
+            loadTransactions();
+            saveSelections();
+          });
         });
       } catch (error) {
         console.error('Error loading accounts:', error);
@@ -163,6 +171,17 @@
         console.error('Error loading transactions:', error);
         document.getElementById('error').textContent = 'Error loading transactions: ' + error.message;
       }
+    }
+
+    // Save checkbox selections to localStorage
+    function saveSelections() {
+      const checkboxes = document.querySelectorAll('.calc-checkbox:checked');
+      const selections = Array.from(checkboxes).map(cb => ({
+        name: cb.dataset.account,
+        action: cb.dataset.action
+      }));
+      localStorage.setItem('customBalanceSelections', JSON.stringify(selections));
+      console.log('Saved selections:', selections);
     }
 
     // Load accounts and transactions on page load
