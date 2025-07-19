@@ -11,7 +11,7 @@ const db = new sqlite3.Database('expense_tracker.db', (err) => {
       console.error('Error connecting to database:', err.message);
     } else {
       console.log('Connected to SQLite database.');
-      // Create accounts table with current_balance
+      // Create accounts table
       db.run(`
         CREATE TABLE IF NOT EXISTS accounts (
           name TEXT PRIMARY KEY,
@@ -21,8 +21,37 @@ const db = new sqlite3.Database('expense_tracker.db', (err) => {
         )
       `, (err) => {
         if (err) console.error('Error creating accounts table:', err.message);
+        else {
+          // Ensure "Income" and "Expense" accounts exist
+          db.get(`SELECT name FROM accounts WHERE name = ?`, ['Income'], (err, row) => {
+            if (err) console.error('Error checking Income account:', err.message);
+            if (!row) {
+              db.run(
+                `INSERT INTO accounts (name, start, current_balance, transaction_list) VALUES (?, ?, ?, ?)`,
+                ['Income', 0, 0, '[]'],
+                (err) => {
+                  if (err) console.error('Error creating Income account:', err.message);
+                  else console.log('Created Income account');
+                }
+              );
+            }
+          });
+          db.get(`SELECT name FROM accounts WHERE name = ?`, ['Expense'], (err, row) => {
+            if (err) console.error('Error checking Expense account:', err.message);
+            if (!row) {
+              db.run(
+                `INSERT INTO accounts (name, start, current_balance, transaction_list) VALUES (?, ?, ?, ?)`,
+                ['Expense', 0, 0, '[]'],
+                (err) => {
+                  if (err) console.error('Error creating Expense account:', err.message);
+                  else console.log('Created Expense account');
+                }
+              );
+            }
+          });
+        }
       });
-      // Create transactions table with accounts_balance
+      // Create transactions table
       db.run(`
         CREATE TABLE IF NOT EXISTS transactions (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,20 +160,25 @@ app.post('/add-transaction', (req, res) => {
       // Calculate accounts_balance for all accounts
       const accountsBalance = accounts.map(account => ({
         name: account.name,
-        balance: account.name === from_account
-          ? account.current_balance - amountInt
-          : account.name === to_account
-            ? account.current_balance + amountInt
-            : account.current_balance
+        balance: account.name === 'Income' || account.name === 'Expense'
+          ? 0
+          : account.name === from_account
+            ? account.current_balance - amountInt
+            : account.name === to_account
+              ? account.current_balance + amountInt
+              : account.current_balance
       }));
   
       console.log('Computed accountsBalance:', accountsBalance);
+  
+      // Calculate available_money for from_account
+      const availableMoney = fromAccount.name === 'Income' ? 0 : fromAccount.current_balance - amountInt;
   
       // Insert transaction
       db.run(
         `INSERT INTO transactions (from_account, to_account, amount, available_money, type, category, comment, accounts_balance) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [from_account, to_account, amountInt, fromAccount.current_balance - amountInt, type, category, comment || '', JSON.stringify(accountsBalance)],
+        [from_account, to_account, amountInt, availableMoney, type, category, comment || '', JSON.stringify(accountsBalance)],
         function (err) {
           if (err) {
             console.error('Error inserting transaction:', err.message);
@@ -162,9 +196,10 @@ app.post('/add-transaction', (req, res) => {
             }
             const transactionList = JSON.parse(row.transaction_list || '[]');
             transactionList.push(transactionId);
+            const newBalance = from_account === 'Income' || from_account === 'Expense' ? 0 : row.current_balance - amountInt;
             db.run(
               `UPDATE accounts SET transaction_list = ?, current_balance = ? WHERE name = ?`,
-              [JSON.stringify(transactionList), row.current_balance - amountInt, from_account],
+              [JSON.stringify(transactionList), newBalance, from_account],
               (err) => {
                 if (err) {
                   console.error('Error updating from_account:', err.message);
@@ -179,9 +214,10 @@ app.post('/add-transaction', (req, res) => {
                   }
                   const toTransactionList = JSON.parse(row.transaction_list || '[]');
                   toTransactionList.push(transactionId);
+                  const newToBalance = to_account === 'Income' || to_account === 'Expense' ? 0 : row.current_balance + amountInt;
                   db.run(
                     `UPDATE accounts SET transaction_list = ?, current_balance = ? WHERE name = ?`,
-                    [JSON.stringify(toTransactionList), row.current_balance + amountInt, to_account],
+                    [JSON.stringify(toTransactionList), newToBalance, to_account],
                     (err) => {
                       if (err) {
                         console.error('Error updating to_account:', err.message);
