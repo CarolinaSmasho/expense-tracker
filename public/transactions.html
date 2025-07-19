@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expense Tracker - Transactions</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    nav { margin-bottom: 20px; }
+    nav a { margin-right: 10px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/transactions">View Transactions</a>
+  </nav>
+
+  <h1>Transactions</h1>
+  <table id="transactionsTable">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>From Account</th>
+        <th>To Account</th>
+        <th>Amount</th>
+        <th>Available Money</th>
+        <th>Type</th>
+        <th>Category</th>
+        <th>Comment</th>
+        <th>Created At</th>
+      </tr>
+    </thead>
+    <tbody id="transactionsBody"></tbody>
+  </table>
+
+  <script>
+    // Fetch and display transactions
+    async function loadTransactions() {
+      try {
+        const response = await fetch('/transactions-data');
+        const transactions = await response.json();
+        const tbody = document.getElementById('transactionsBody');
+        tbody.innerHTML = '';
+
+        transactions.forEach(txn => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${txn.id}</td>
+            <td>${txn.from_account}</td>
+            <td>${txn.to_account}</td>
+            <td>${txn.amount}</td>
+            <td>${txn.available_money}</td>
+            <td>${txn.type}</td>
+            <td>${txn.category}</td>
+            <td>${txn.comment || ''}</td>
+            <td>${txn.created_at}</td>
+          `;
+          tbody.appendChild(row);
+        });
+      } catch (error) {
+        console.error('Error loading transactions:', error);
+      }
+    }
+
+    // Load transactions on page load
+    window.onload = loadTransactions;
+  </script>
+</body>
+</html>

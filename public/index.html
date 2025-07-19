@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expense Tracker - Initialize Accounts</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    form { margin-bottom: 20px; }
+    input, select, button { margin: 5px; padding: 8px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    .section { margin-bottom: 40px; }
+    nav { margin-bottom: 20px; }
+    nav a { margin-right: 10px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/transactions">View Transactions</a>
+  </nav>
+
+  <div class="section">
+    <h1>Initialize Accounts</h1>
+    <form action="/init-account" method="POST">
+      <label for="name">Account Name:</label>
+      <input type="text" id="name" name="name" required>
+      <label for="start">Starting Balance:</label>
+      <input type="number" id="start" name="start" required min="0">
+      <button type="submit">Add Account</button>
+    </form>
+  </div>
+
+  <div class="section">
+    <h1>Add Transaction</h1>
+    <form action="/add-transaction" method="POST">
+      <label for="from_account">From Account:</label>
+      <select id="from_account" name="from_account" required>
+        <option value="">Select Account</option>
+      </select>
+      <label for="via_account">To Account:</label>
+      <select id="to_account" name="to_account" required>
+        <option value="">Select Account</option>
+      </select>
+      <label for="amount">Amount:</label>
+      <input type="number" id="amount" name="amount" required min="0">
+      <label for="type">Type:</label>
+      <select id="type" name="type" required>
+        <option value="">Select Type</option>
+        <option value="income">Income</option>
+        <option value="expense">Expense</option>
+        <option value="transfer">Transfer</option>
+      </select>
+      <label for="category">Category:</label>
+      <input type="text" id="category" name="category" required>
+      <label for="comment">Comment:</label>
+      <input type="text" id="comment" name="comment">
+      <button type="submit">Add Transaction</button>
+    </form>
+  </div>
+
+  <div class="section">
+    <h2>Existing Accounts</h2>
+    <table id="accountsTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Starting Balance</th>
+        </tr>
+      </thead>
+      <tbody id="accountsBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    // Fetch and display accounts
+    async function loadAccounts() {
+      try {
+        const response = await fetch('/accounts');
+        const accounts = await response.json();
+        const tbody = document.getElementById('accountsBody');
+        const fromSelect = document.getElementById('from_account');
+        const toSelect = document.getElementById('to_account');
+        tbody.innerHTML = '';
+        fromSelect.innerHTML = '<option value="">Select Account</option>';
+        toSelect.innerHTML = '<option value="">Select Account</option>';
+
+        accounts.forEach(account => {
+          // Update table
+          const row = document.createElement('tr');
+          row.innerHTML = `<td>${account.name}</td><td>${account.start}</td>`;
+          tbody.appendChild(row);
+
+          // Update select options
+          const optionFrom = document.createElement('option');
+          optionFrom.value = account.name;
+          optionFrom.textContent = account.name;
+          fromSelect.appendChild(optionFrom);
+
+          const optionTo = document.createElement('option');
+          optionTo.value = account.name;
+          optionTo.textContent = account.name;
+          toSelect.appendChild(optionTo);
+        });
+      } catch (error) {
+        console.error('Error loading accounts:', error);
+      }
+    }
+
+    // Load accounts on page load
+    window.onload = loadAccounts;
+
+    // Refresh accounts after form submission
+    document.querySelectorAll('form').forEach(form => {
+      form.addEventListener('submit', () => {
+        setTimeout(loadAccounts, 500); // Refresh table after a delay
+      });
+    });
+  </script>
+</body>
+</html>
