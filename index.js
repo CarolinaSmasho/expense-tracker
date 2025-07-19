@@ -89,10 +89,8 @@ app.get('/accounts', (req, res) => {
         return new Promise((resolve) => {
           const transactionIds = JSON.parse(account.transaction_list || '[]');
           if (transactionIds.length === 0) {
-            // No transactions, use starting balance
             resolve({ name: account.name, balance: account.start });
           } else {
-            // Get the latest transaction where the account is involved
             db.get(
               `SELECT available_money 
                FROM transactions 
@@ -103,43 +101,26 @@ app.get('/accounts', (req, res) => {
               (err, transaction) => {
                 if (err) {
                   console.error('Error fetching transaction for balance:', err.message);
-                  resolve({ name: account.name, balance: account.start }); // Fallback to start
+                  resolve({ name: account.name, balance: account.start });
                 } else if (transaction) {
                   resolve({ name: account.name, balance: transaction.available_money });
                 } else {
-                  // If no from_account transactions, check to_account
-                  db.get(
-                    `SELECT amount 
+                  db.all(
+                    `SELECT amount, from_account, to_account 
                      FROM transactions 
-                     WHERE id IN (${transactionIds.join(',')}) 
-                     AND to_account = ? 
-                     ORDER BY created_at DESC LIMIT 1`,
-                    [account.name],
-                    (err, toTransaction) => {
+                     WHERE id IN (${transactionIds.join(',')})`,
+                    [],
+                    (err, txns) => {
                       if (err) {
-                        console.error('Error fetching to_account transaction:', err.message);
+                        console.error('Error fetching all transactions:', err.message);
                         resolve({ name: account.name, balance: account.start });
                       } else {
-                        // Calculate balance: start + sum(to_amounts) - sum(from_amounts)
-                        db.all(
-                          `SELECT amount, from_account, to_account 
-                           FROM transactions 
-                           WHERE id IN (${transactionIds.join(',')})`,
-                          [],
-                          (err, txns) => {
-                            if (err) {
-                              console.error('Error fetching all transactions:', err.message);
-                              resolve({ name: account.name, balance: account.start });
-                            } else {
-                              let balance = parseInt(account.start);
-                              txns.forEach(txn => {
-                                if (txn.from_account === account.name) balance -= txn.amount;
-                                if (txn.to_account === account.name) balance += txn.amount;
-                              });
-                              resolve({ name: account.name, balance });
-                            }
-                          }
-                        );
+                        let balance = parseInt(account.start);
+                        txns.forEach(txn => {
+                          if (txn.from_account === account.name) balance -= txn.amount;
+                          if (txn.to_account === account.name) balance += txn.amount;
+                        });
+                        resolve({ name: account.name, balance });
                       }
                     }
                   );
@@ -158,7 +139,6 @@ app.get('/accounts', (req, res) => {
       });
     });
   });
-
 // Serve the database file for download (read-only)
 app.get('/db', (req, res) => {
   const dbPath = path.join(__dirname, 'expense_tracker.db');
@@ -171,121 +151,159 @@ app.get('/db', (req, res) => {
 });
 
 app.post('/add-transaction', (req, res) => {
-console.log('Received transaction body:', req.body);
-const { from_account, to_account, amount, type, category, comment } = req.body;
-
-if (!from_account || !to_account || !amount || isNaN(amount) || !type || !category) {
-    console.log('Transaction validation failed:', { from_account, to_account, amount, type, category });
-    return res.status(400).send('Invalid input: from, to, amount, type, and category are required.');
-}
-
-// Calculate available_money for from_account
-db.get(
-    `SELECT start, transaction_list FROM accounts WHERE name = ?`,
-    [from_account],
-    (err, account) => {
-    if (err || !account) {
-        console.error('Error fetching from_account:', err?.message);
-        return res.status(500).send('Error: Invalid from account.');
+    console.log('Received transaction body:', req.body);
+    const { from_account, to_account, amount, type, category, comment } = req.body;
+  
+    if (!from_account || !to_account || !amount || isNaN(amount) || !type || !category) {
+      console.log('Transaction validation failed:', { from_account, to_account, amount, type, category });
+      return res.status(400).send('Invalid input: from, to, amount, type, and category are required.');
     }
-
-    // Parse transaction_list to calculate current balance
-    const transactions = JSON.parse(account.transaction_list || '[]');
-    db.all(
-        `SELECT amount, from_account, to_account FROM transactions WHERE id IN (${transactions.length ? transactions.join(',') : '0'})`,
-        [],
-        (err, txns) => {
-        if (err) {
-            console.error('Error fetching transactions:', err.message);
-            return res.status(500).send('Error calculating balance.');
-        }
-
-        let balance = parseInt(account.start);
-        txns.forEach(txn => {
-            if (txn.from_account === from_account) balance -= txn.amount;
-            if (txn.to_account === from_account) balance += txn.amount;
+  
+    // Fetch all accounts to calculate balances
+    db.all(`SELECT name, start, transaction_list FROM accounts`, [], (err, accounts) => {
+      if (err) {
+        console.error('Error fetching accounts:', err.message);
+        return res.status(500).send('Error fetching accounts.');
+      }
+  
+      console.log('Fetched accounts:', accounts);
+  
+      // Calculate balances for all accounts
+      const accountsBalance = [];
+      let fromBalance = null;
+  
+      const promises = accounts.map(account => {
+        return new Promise((resolve) => {
+          const transactionIds = JSON.parse(account.transaction_list || '[]');
+          let balance = parseInt(account.start);
+  
+          console.log(`Calculating balance for account: ${account.name}, start: ${balance}, transactionIds:`, transactionIds);
+  
+          if (transactionIds.length === 0) {
+            // Apply the current transaction
+            if (account.name === from_account) balance -= parseInt(amount);
+            if (account.name === to_account) balance += parseInt(amount);
+            if (account.name === from_account) fromBalance = balance;
+            resolve({ name: account.name, balance });
+          } else {
+            db.all(
+              `SELECT amount, from_account, to_account FROM transactions WHERE id IN (${transactionIds.join(',')})`,
+              [],
+              (err, txns) => {
+                if (err) {
+                  console.error(`Error fetching transactions for ${account.name}:`, err.message);
+                  resolve({ name: account.name, balance });
+                } else {
+                  console.log(`Transactions for ${account.name}:`, txns);
+                  txns.forEach(txn => {
+                    if (txn.from_account === account.name) balance -= txn.amount;
+                    if (txn.to_account === account.name) balance += txn.amount;
+                  });
+                  // Apply the current transaction
+                  if (account.name === from_account) balance -= parseInt(amount);
+                  if (account.name === to_account) balance += parseInt(amount);
+                  if (account.name === from_account) fromBalance = balance;
+                  resolve({ name: account.name, balance });
+                }
+              }
+            );
+          }
         });
-
+      });
+  
+      Promise.all(promises).then(accountsBalance => {
+        console.log('Computed accountsBalance:', accountsBalance);
+        if (fromBalance === null) {
+          const fromAccount = accounts.find(acc => acc.name === from_account);
+          if (!fromAccount) {
+            console.error('From account not found:', from_account);
+            return res.status(500).send('Error: Invalid from account.');
+          }
+          fromBalance = parseInt(fromAccount.start) - parseInt(amount);
+        }
+  
         // Insert transaction
         db.run(
-            `INSERT INTO transactions (from_account, to_account, amount, available_money, type, category, comment) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [from_account, to_account, parseInt(amount), balance - parseInt(amount), type, category, comment || ''],
-            function (err) {
+          `INSERT INTO transactions (from_account, to_account, amount, available_money, type, category, comment, accounts_balance) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [from_account, to_account, parseInt(amount), fromBalance, type, category, comment || '', JSON.stringify(accountsBalance)],
+          function (err) {
             if (err) {
-                console.error('Error inserting transaction:', err.message);
-                return res.status(500).send('Error creating transaction.');
+              console.error('Error inserting transaction:', err.message);
+              return res.status(500).send('Error creating transaction.');
             }
-
+  
             const transactionId = this.lastID;
-
+            console.log('Inserted transaction ID:', transactionId);
+  
             // Update transaction_list for from_account
             db.get(`SELECT transaction_list FROM accounts WHERE name = ?`, [from_account], (err, row) => {
-                if (err) {
+              if (err) {
                 console.error('Error fetching from_account transaction_list:', err.message);
                 return res.status(500).send('Error updating account.');
-                }
-                const transactionList = JSON.parse(row.transaction_list || '[]');
-                transactionList.push(transactionId);
-                db.run(
+              }
+              const transactionList = JSON.parse(row.transaction_list || '[]');
+              transactionList.push(transactionId);
+              db.run(
                 `UPDATE accounts SET transaction_list = ? WHERE name = ?`,
                 [JSON.stringify(transactionList), from_account],
                 (err) => {
-                    if (err) {
+                  if (err) {
                     console.error('Error updating from_account:', err.message);
                     return res.status(500).send('Error updating account.');
-                    }
-
-                    // Update transaction_list for to_account
-                    db.get(`SELECT transaction_list FROM accounts WHERE name = ?`, [to_account], (err, row) => {
+                  }
+  
+                  // Update transaction_list for to_account
+                  db.get(`SELECT transaction_list FROM accounts WHERE name = ?`, [to_account], (err, row) => {
                     if (err) {
-                        console.error('Error fetching to_account transaction_list:', err.message);
-                        return res.status(500).send('Error updating account.');
+                      console.error('Error fetching to_account transaction_list:', err.message);
+                      return res.status(500).send('Error updating account.');
                     }
                     const toTransactionList = JSON.parse(row.transaction_list || '[]');
                     toTransactionList.push(transactionId);
                     db.run(
-                        `UPDATE accounts SET transaction_list = ? WHERE name = ?`,
-                        [JSON.stringify(toTransactionList), to_account],
-                        (err) => {
+                      `UPDATE accounts SET transaction_list = ? WHERE name = ?`,
+                      [JSON.stringify(toTransactionList), to_account],
+                      (err) => {
                         if (err) {
-                            console.error('Error updating to_account:', err.message);
-                            return res.status(500).send('Error updating account.');
+                          console.error('Error updating to_account:', err.message);
+                          return res.status(500).send('Error updating account.');
                         }
+                        console.log('Transaction and accounts updated successfully');
                         res.redirect('/');
-                        }
+                      }
                     );
-                    });
+                  });
                 }
-                );
+              );
             });
-            }
+          }
         );
-        }
-    );
-    }
-);
-});
+      }).catch(err => {
+        console.error('Error processing account balances:', err.message);
+        res.status(500).send('Error processing account balances.');
+      });
+    });
+  });
 
 app.get('/transactions', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'transactions.html'));
 });
 
 app.get('/transactions-data', (req, res) => {
-db.all(
-    `SELECT id, from_account, to_account, amount, available_money, type,
-
-category, comment, created_at FROM transactions`,
-    [],
-    (err, rows) => {
-    if (err) {
-        console.error('Error fetching transactions:', err.message);
-        return res.status(500).send('Error fetching transactions.');
-    }
-    res.json(rows);
-    }
-);
-});
+    db.all(
+      `SELECT id, from_account, to_account, amount, available_money, type, category, comment, created_at, accounts_balance 
+       FROM transactions`,
+      [],
+      (err, rows) => {
+        if (err) {
+          console.error('Error fetching transactions:', err.message);
+          return res.status(500).send('Error fetching transactions.');
+        }
+        res.json(rows);
+      }
+    );
+  });
 
 // Start server
 app.listen(port, () => {
