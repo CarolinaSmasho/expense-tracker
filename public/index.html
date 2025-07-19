@@ -67,7 +67,7 @@
       <thead>
         <tr>
           <th>Name</th>
-          <th>Starting Balance</th>
+          <th>Remaining Balance</th>
         </tr>
       </thead>
       <tbody id="accountsBody"></tbody>
@@ -90,7 +90,7 @@
         accounts.forEach(account => {
           // Update table
           const row = document.createElement('tr');
-          row.innerHTML = `<td>${account.name}</td><td>${account.start}</td>`;
+          row.innerHTML = `<td>${account.name}</td><td>${account.balance}</td>`;
           tbody.appendChild(row);
 
           // Update select options

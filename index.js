@@ -21,7 +21,7 @@ const db = new sqlite3.Database('expense_tracker.db', (err) => {
     `, (err) => {
       if (err) console.error('Error creating accounts table:', err.message);
     });
-    // Create transactions table
+    // Create transactions table with accounts_balance
     db.run(`
       CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,6 +33,7 @@ const db = new sqlite3.Database('expense_tracker.db', (err) => {
         category TEXT,
         comment TEXT,
         created_at TEXT DEFAULT (datetime('now')),
+        accounts_balance TEXT DEFAULT '[]',
         FOREIGN KEY (from_account) REFERENCES accounts(name),
         FOREIGN KEY (to_account) REFERENCES accounts(name)
       )
@@ -42,7 +43,6 @@ const db = new sqlite3.Database('expense_tracker.db', (err) => {
   }
 });
 
-// Middleware
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.use(express.json()); // Parse JSON bodies (optional)
 app.use(express.static('public')); // Serve static files
@@ -78,14 +78,86 @@ app.post('/init-account', (req, res) => {
 
 // Get all accounts to display
 app.get('/accounts', (req, res) => {
-  db.all(`SELECT name, start FROM accounts`, [], (err, rows) => {
-    if (err) {
-      console.error('Error fetching accounts:', err.message);
-      return res.status(500).send('Error fetching accounts.');
-    }
-    res.json(rows);
+    db.all(`SELECT name, start, transaction_list FROM accounts`, [], (err, accounts) => {
+      if (err) {
+        console.error('Error fetching accounts:', err.message);
+        return res.status(500).send('Error fetching accounts.');
+      }
+  
+      const results = [];
+      const promises = accounts.map(account => {
+        return new Promise((resolve) => {
+          const transactionIds = JSON.parse(account.transaction_list || '[]');
+          if (transactionIds.length === 0) {
+            // No transactions, use starting balance
+            resolve({ name: account.name, balance: account.start });
+          } else {
+            // Get the latest transaction where the account is involved
+            db.get(
+              `SELECT available_money 
+               FROM transactions 
+               WHERE id IN (${transactionIds.join(',')}) 
+               AND from_account = ? 
+               ORDER BY created_at DESC LIMIT 1`,
+              [account.name],
+              (err, transaction) => {
+                if (err) {
+                  console.error('Error fetching transaction for balance:', err.message);
+                  resolve({ name: account.name, balance: account.start }); // Fallback to start
+                } else if (transaction) {
+                  resolve({ name: account.name, balance: transaction.available_money });
+                } else {
+                  // If no from_account transactions, check to_account
+                  db.get(
+                    `SELECT amount 
+                     FROM transactions 
+                     WHERE id IN (${transactionIds.join(',')}) 
+                     AND to_account = ? 
+                     ORDER BY created_at DESC LIMIT 1`,
+                    [account.name],
+                    (err, toTransaction) => {
+                      if (err) {
+                        console.error('Error fetching to_account transaction:', err.message);
+                        resolve({ name: account.name, balance: account.start });
+                      } else {
+                        // Calculate balance: start + sum(to_amounts) - sum(from_amounts)
+                        db.all(
+                          `SELECT amount, from_account, to_account 
+                           FROM transactions 
+                           WHERE id IN (${transactionIds.join(',')})`,
+                          [],
+                          (err, txns) => {
+                            if (err) {
+                              console.error('Error fetching all transactions:', err.message);
+                              resolve({ name: account.name, balance: account.start });
+                            } else {
+                              let balance = parseInt(account.start);
+                              txns.forEach(txn => {
+                                if (txn.from_account === account.name) balance -= txn.amount;
+                                if (txn.to_account === account.name) balance += txn.amount;
+                              });
+                              resolve({ name: account.name, balance });
+                            }
+                          }
+                        );
+                      }
+                    }
+                  );
+                }
+              }
+            );
+          }
+        });
+      });
+  
+      Promise.all(promises).then(results => {
+        res.json(results);
+      }).catch(err => {
+        console.error('Error processing accounts:', err.message);
+        res.status(500).send('Error processing accounts.');
+      });
+    });
   });
-});
 
 // Serve the database file for download (read-only)
 app.get('/db', (req, res) => {
