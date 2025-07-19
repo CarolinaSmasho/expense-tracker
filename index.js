@@ -255,6 +255,45 @@ app.get('/transactions-data', (req, res) => {
     );
   });
 
+app.post('/clear-database', (req, res) => {
+    console.log('Clearing database...');
+    db.run(`DELETE FROM transactions`, (err) => {
+        if (err) {
+            console.error('Error clearing transactions:', err.message);
+            return res.status(500).send('Error clearing transactions.');
+        }
+        db.run(`DELETE FROM accounts`, (err) => {
+        if (err) {
+            console.error('Error clearing accounts:', err.message);
+            return res.status(500).send('Error clearing accounts.');
+        }
+        // Recreate Income and Expense accounts
+        db.run(
+            `INSERT INTO accounts (name, start, current_balance, transaction_list) VALUES (?, ?, ?, ?)`,
+            ['Income', 0, 0, '[]'],
+            (err) => {
+            if (err) {
+                console.error('Error recreating Income account:', err.message);
+                return res.status(500).send('Error recreating Income account.');
+            }
+            db.run(
+                `INSERT INTO accounts (name, start, current_balance, transaction_list) VALUES (?, ?, ?, ?)`,
+                ['Expense', 0, 0, '[]'],
+                (err) => {
+                if (err) {
+                    console.error('Error recreating Expense account:', err.message);
+                    return res.status(500).send('Error recreating Expense account.');
+                }
+                console.log('Database cleared and Income/Expense accounts recreated');
+                res.status(200).send('Database cleared successfully.');
+                }
+            );
+            }
+        );
+        });
+    });
+});
+
 // Start server
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
