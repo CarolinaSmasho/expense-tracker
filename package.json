@@ -11,6 +11,8 @@
   "license": "ISC",
   "dependencies": {
     "express": "^5.1.0",
+    "fs": "^0.0.1-security",
+    "multer": "^2.0.2",
     "sqlite3": "^5.1.7"
   }
 }
