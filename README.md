@@ -5,3 +5,4 @@ todolist
 - [ ] filter of transaction type
 - [ ] filter category each type
 - [ ] delete account function
+- [ ] occurence tables (ตารางรายงวดว่ามีหนี้แต่ละเดือนเท่าไหร่ ได้รายรับประจำเดือนแล้วรึยัง)
