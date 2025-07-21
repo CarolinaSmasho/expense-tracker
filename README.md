@@ -6,3 +6,6 @@ todolist
 - [ ] filter category each type
 - [ ] delete account function
 - [ ] occurence tables (ตารางรายงวดว่ามีหนี้แต่ละเดือนเท่าไหร่ ได้รายรับประจำเดือนแล้วรึยัง)
+- [ ] โอนจากบัญชีนึงไปอีกบัญชีนึงแบบ 100%
+- [ ] สามารถปรับ order ในการแสดง account ได้
+- [ ] ย้ายที่ติ้กเพื่อบวกหรือลบ ไปที่ตาราง account แทน
