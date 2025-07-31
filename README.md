@@ -10,3 +10,4 @@ todolist
 - [ ] สามารถปรับ order ในการแสดง account ได้
 - [ ] ย้ายที่ติ้กเพื่อบวกหรือลบ ไปที่ตาราง account แทน
 - [ ] calendar view
+- [ ] expense tracker edit day to record
