@@ -262,25 +262,25 @@ app.get('/transactions/:id/edit', (req, res) => {
 // API endpoint สำหรับอัพเดทข้อมูล transaction
 app.post('/api/transactions/:id', (req, res) => {
   const transactionId = req.params.id;
-  const { from_account, to_account, amount, comment, category, type } = req.body;
+  const { from_account, to_account, amount, comment, category, type, created_at } = req.body;
   
   // ตรวจสอบว่าข้อมูลครบถ้วน
-  if (!from_account || !to_account || !amount || !category || !type) {
+  if (!from_account || !to_account || !amount || !category || !type || !created_at) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
   // อัพเดทข้อมูลในฐานข้อมูล
   const query = `
     UPDATE transactions 
-    SET from_account = ?, to_account = ?, amount = ?, comment = ?, category = ?, type = ?
+    SET from_account = ?, to_account = ?, amount = ?, comment = ?, category = ?, type = ?, created_at = ?
     WHERE id = ?
   `;
-  db.run(query, [from_account, to_account, amount, comment || '', category, type, transactionId], (err) => {
+  db.run(query, [from_account, to_account, amount, comment || '', category, type, created_at, transactionId], (err) => {
     if (err) {
       console.error('Error updating transaction:', err.message);
       return res.status(500).json({ error: `Error updating transaction: ${err.message}` });
     }
-    console.log('Transaction updated:', { id: transactionId, from_account, to_account, amount, comment, category, type });
+    console.log('Transaction updated:', { id: transactionId, from_account, to_account, amount, comment, category, type, created_at });
     res.json({ message: 'Transaction updated successfully' });
   });
 });

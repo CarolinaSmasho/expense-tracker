@@ -98,6 +98,10 @@
       <label for="comment">Comment:</label>
       <textarea id="comment" name="comment" rows="4"></textarea>
     </div>
+    <div class="form-group">
+        <label for="created_at">Created At:</label>
+        <input type="datetime-local" id="created_at" name="created_at">
+      </div>
     <button onclick="submitForm()">Save Changes</button>
     <button class="delete-button" onclick="deleteTransaction()">Delete Transaction</button>
     <p id="error-message" class="error-message"></p>
@@ -121,6 +125,7 @@
         document.getElementById('type').value = data.transaction.type;
         document.getElementById('category').value = data.transaction.category;
         document.getElementById('comment').value = data.transaction.comment;
+        document.getElementById('created_at').value = data.transaction.created_at.replace(' ', 'T'); 
       })
       .catch(error => {
         window.location.href = `/error.html?message=${encodeURIComponent(error.message)}&status=404`;
@@ -134,7 +139,8 @@
         amount: parseFloat(document.getElementById('amount').value),
         type: document.getElementById('type').value,
         category: document.getElementById('category').value,
-        comment: document.getElementById('comment').value
+        comment: document.getElementById('comment').value,
+        created_at: document.getElementById('created_at').value.replace('T', ' ')
       };
       fetch(`/api/transactions/${id}`, {
         method: 'POST',
