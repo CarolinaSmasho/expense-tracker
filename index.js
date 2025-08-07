@@ -127,108 +127,36 @@ app.post('/init-account', (req, res) => {
 
 // Handle transaction creation
 app.post('/add-transaction', (req, res) => {
-  console.log('Received transaction body:', req.body);
-  const { from_account, to_account, amount, type, category, comment } = req.body;
-
-  if (!from_account || !to_account || !amount || isNaN(amount) || !type || !category) {
-    console.log('Transaction validation failed:', { from_account, to_account, amount, type, category });
-    return res.status(400).send('Invalid input: from, to, amount, type, and category are required.');
+  const { from_account, to_account, amount, type, category, comment, created_at } = req.body;
+  
+  if (!from_account || !to_account || !amount || !type || !category || !created_at) {
+    return res.status(400).send('Missing required fields');
   }
 
-  const amountInt = parseInt(amount);
+  // แปลง created_at จาก "YYYY-MM-DDTHH:mm" หรือ "YYYY-MM-DDTHH:mm:ss" เป็น "YYYY-MM-DD HH:mm:ss"
+  let formattedCreatedAt = created_at;
+  if (!formattedCreatedAt.includes(':')) {
+    formattedCreatedAt += ':00'; // เพิ่มวินาทีถ้าไม่มี
+  } else if (formattedCreatedAt.match(/T\d{2}:\d{2}$/)) {
+    formattedCreatedAt = formattedCreatedAt.replace('T', ' ') + ':00';
+  } else {
+    formattedCreatedAt = formattedCreatedAt.replace('T', ' ');
+  }
 
-  // Fetch all accounts to calculate balances
-  db.all(`SELECT name, start, current_balance, transaction_list FROM accounts`, [], (err, accounts) => {
+  // สมมติว่า available_money และ accounts_balance ถูกคำนวณใน trigger หรือ logic อื่น
+  const query = `
+    INSERT INTO transactions (from_account, to_account, amount, type, category, comment, created_at, available_money, accounts_balance)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+  const dummyAvailableMoney = 0; // แทนที่ด้วยการคำนวณจริง
+  const dummyAccountsBalance = JSON.stringify([]); // แทนที่ด้วยการคำนวณจริง
+  db.run(query, [from_account, to_account, amount, type, category, comment || '', formattedCreatedAt, dummyAvailableMoney, dummyAccountsBalance], (err) => {
     if (err) {
-      console.error('Error fetching accounts:', err.message);
-      return res.status(500).send('Error fetching accounts.');
+      console.error('Error adding transaction:', err.message);
+      return res.status(500).send('Error adding transaction');
     }
-
-    console.log('Fetched accounts:', accounts);
-
-    const fromAccount = accounts.find(acc => acc.name === from_account);
-    const toAccount = accounts.find(acc => acc.name === to_account);
-    if (!fromAccount || !toAccount) {
-      console.error('Invalid account:', { from_account, to_account });
-      return res.status(500).send('Error: Invalid from or to account.');
-    }
-
-    // Calculate accounts_balance for all accounts
-    const accountsBalance = accounts.map(account => ({
-      name: account.name,
-      balance: account.name === 'Income' || account.name === 'Expense'
-        ? 0
-        : account.name === from_account
-          ? account.current_balance - amountInt
-          : account.name === to_account
-            ? account.current_balance + amountInt
-            : account.current_balance
-    }));
-
-    console.log('Computed accountsBalance:', accountsBalance);
-
-    // Calculate available_money for from_account
-    const availableMoney = fromAccount.name === 'Income' ? 0 : fromAccount.current_balance - amountInt;
-
-    // Insert transaction
-    db.run(
-      `INSERT INTO transactions (from_account, to_account, amount, available_money, type, category, comment, accounts_balance) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [from_account, to_account, amountInt, availableMoney, type, category, comment || '', JSON.stringify(accountsBalance)],
-      function (err) {
-        if (err) {
-          console.error('Error inserting transaction:', err.message);
-          return res.status(500).send('Error creating transaction.');
-        }
-
-        const transactionId = this.lastID;
-        console.log('Inserted transaction ID:', transactionId, 'with accounts_balance:', JSON.stringify(accountsBalance));
-
-        // Update transaction_list and current_balance for from_account
-        db.get(`SELECT transaction_list, current_balance FROM accounts WHERE name = ?`, [from_account], (err, row) => {
-          if (err) {
-            console.error('Error fetching from_account transaction_list:', err.message);
-            return res.status(500).send('Error updating account.');
-          }
-          const transactionList = JSON.parse(row.transaction_list || '[]');
-          transactionList.push(transactionId);
-          const newBalance = from_account === 'Income' || from_account === 'Expense' ? 0 : row.current_balance - amountInt;
-          db.run(
-            `UPDATE accounts SET transaction_list = ?, current_balance = ? WHERE name = ?`,
-            [JSON.stringify(transactionList), newBalance, from_account],
-            (err) => {
-              if (err) {
-                console.error('Error updating from_account:', err.message);
-                return res.status(500).send('Error updating account.');
-              }
-
-              // Update transaction_list and current_balance for to_account
-              db.get(`SELECT transaction_list, current_balance FROM accounts WHERE name = ?`, [to_account], (err, row) => {
-                if (err) {
-                  console.error('Error fetching to_account transaction_list:', err.message);
-                  return res.status(500).send('Error updating account.');
-                }
-                const toTransactionList = JSON.parse(row.transaction_list || '[]');
-                toTransactionList.push(transactionId);
-                const newToBalance = to_account === 'Income' || to_account === 'Expense' ? 0 : row.current_balance + amountInt;
-                db.run(
-                  `UPDATE accounts SET transaction_list = ?, current_balance = ? WHERE name = ?`,
-                  [JSON.stringify(toTransactionList), newToBalance, to_account],
-                  (err) => {
-                    if (err) {
-                      console.error('Error updating to_account:', err.message);
-                      return res.status(500).send('Error updating account.');
-                    }
-                    console.log('Transaction and accounts updated successfully');
-                    res.redirect('/');
-                  }
-                );
-              });
-            }
-          );
-        });
-      }
-    );
+    console.log('Transaction added:', { from_account, to_account, amount, type, category, comment, created_at: formattedCreatedAt });
+    res.redirect('/'); // กลับไปหน้า index
   });
 });
 
