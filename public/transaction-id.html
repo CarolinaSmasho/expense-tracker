@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Transaction</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    h1 {
+      color: #1976d2;
+      border-bottom: 2px solid #1976d2;
+      padding-bottom: 10px;
+    }
+    .transaction-details {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    .transaction-details p {
+      margin: 10px 0;
+      line-height: 1.6;
+    }
+    .transaction-details strong {
+      display: inline-block;
+      width: 150px;
+      color: #424242;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background-color: #1976d2;
+      color: white;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+  </style>
+</head>
+<body>
+  <h1 id="title">Transaction</h1>
+  <div class="transaction-details" id="details"></div>
+  <h2>Accounts Balance</h2>
+  <table id="balance-table">
+    <tr>
+      <th>Account Name</th>
+      <th>Balance (THB)</th>
+    </tr>
+  </table>
+  <button><a href="/transactions">Back to Transactions</a></button>
+  <script>
+    // ดึง transaction ID จาก URL
+    const id = window.location.pathname.split('/').pop();
+    fetch(`/api/transactions/${id}`)
+      .then(response => {
+        if (!response.ok) throw new Error('Transaction not found');
+        return response.json();
+      })
+      .then(data => {
+        document.getElementById('title').textContent = `Transaction #${data.transaction.id}`;
+        const details = document.getElementById('details');
+        details.innerHTML = `
+          <p><strong>From Account:</strong> ${data.transaction.from_account}</p>
+          <p><strong>To Account:</strong> ${data.transaction.to_account}</p>
+          <p><strong>Amount:</strong> ${data.transaction.amount} THB</p>
+          <p><strong>Available Money:</strong> ${data.transaction.available_money} THB</p>
+          <p><strong>Type:</strong> ${data.transaction.type}</p>
+          <p><strong>Category:</strong> ${data.transaction.category}</p>
+          <p><strong>Comment:</strong> ${data.transaction.comment}</p>
+          <p><strong>Created At:</strong> ${data.transaction.created_at}</p>
+        `;
+        const table = document.getElementById('balance-table');
+        data.accountsBalance.forEach(account => {
+          const row = document.createElement('tr');
+          row.innerHTML = `<td>${account.name}</td><td>${account.balance}</td>`;
+          table.appendChild(row);
+        });
+      })
+      .catch(error => {
+        window.location.href = '/error.html';
+      });
+  </script>
+</body>
+</html>

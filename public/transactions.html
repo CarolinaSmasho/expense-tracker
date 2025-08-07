@@ -6,16 +6,56 @@
   <title>Expense Tracker - Transactions</title>
   <style>
     body { font-family: Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background-color: #f2f2f2; }
+    table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      border: 2px solid #333; /* Thicker, darker border for table frame */
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for emphasis */
+    }
+    th, td { 
+      border: 2px solid #333; /* Thicker, darker cell borders */
+      padding: 10px; /* Slightly more padding for readability */
+      text-align: left; 
+    }
+    th { 
+      background-color: #e0e0e0; /* Slightly darker header background */
+      font-weight: bold; 
+    }
     nav { margin-bottom: 20px; }
-    nav a { margin-right: 10px; }
-    .accounts-balance, .custom-balance { max-width: 200px; overflow-x: auto; white-space: nowrap; }
-    .error { color: red; }
-    .custom-calc label { display: inline-block; margin-right: 15px; }
+    nav a { margin-right: 10px; text-decoration: none; color: #007bff; }
+    .accounts-balance, .custom-balance { 
+      max-width: 200px; 
+      overflow-x: auto; 
+      overflow-wrap: break-word; 
+      word-break: break-all; 
+      white-space: normal; 
+    }
+    .error { color: red; font-weight: bold; }
+    .custom-calc label { 
+      display: inline-block; 
+      margin-right: 15px; 
+      margin-bottom: 10px; 
+    }
     .custom-calc input[type="checkbox"] { margin-left: 5px; }
-    .accounts-balance, .custom-balance {max-width: 200px; overflow-x: auto; overflow-wrap: break-word; word-break: break-all; white-space: normal;}
+    #pagination { 
+      margin-top: 20px; 
+      text-align: center; 
+    }
+    #pagination button { 
+      margin: 0 5px; 
+      padding: 8px 12px; 
+      cursor: pointer; 
+      border: 1px solid #333; 
+      background-color: #f9f9f9; 
+    }
+    #pagination button:disabled { 
+      cursor: not-allowed; 
+      opacity: 0.5; 
+    }
+    #pagination button:hover:not(:disabled) { 
+      background-color: #007bff; 
+      color: white; 
+    }
   </style>
 </head>
 <body>
@@ -44,13 +84,22 @@
         <th>Created At</th>
         <th>Accounts Balance</th>
         <th>Custom Balance</th>
+        <th>Edit</th>
       </tr>
     </thead>
     <tbody id="transactionsBody"></tbody>
   </table>
+  <div id="pagination">
+    <button id="prevPage" disabled>Previous</button>
+    <span id="pageNumbers"></span>
+    <button id="nextPage">Next</button>
+  </div>
 
   <script>
-    let accounts = []; // Store account names for checkbox population
+    let accounts = [];
+    let currentPage = 1;
+    const pageSize = 10;
+    let totalPages = 1;
 
     // Fetch accounts for custom calculation
     async function loadAccounts() {
@@ -65,7 +114,6 @@
         const customCalcDiv = document.getElementById('customCalc');
         customCalcDiv.innerHTML = '';
 
-        // Load saved selections from localStorage
         const savedSelections = JSON.parse(localStorage.getItem('customBalanceSelections') || '[]');
 
         accounts.forEach(account => {
@@ -85,10 +133,9 @@
           customCalcDiv.appendChild(calcDiv);
         });
 
-        // Add event listeners for checkboxes
         document.querySelectorAll('.calc-checkbox').forEach(checkbox => {
           checkbox.addEventListener('change', () => {
-            loadTransactions();
+            loadTransactions(currentPage);
             saveSelections();
           });
         });
@@ -98,48 +145,58 @@
       }
     }
 
-    // Fetch and display transactions
-    async function loadTransactions() {
+    // Fetch and display transactions with pagination
+    async function loadTransactions(page = 1) {
       try {
-        const response = await fetch('/transactions-data');
+        currentPage = page;
+        const response = await fetch(`/transactions-data?page=${page}&limit=${pageSize}`);
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
-        const transactions = await response.json();
-        console.log('Fetched transactions:', transactions);
+        const data = await response.json();
+        console.log('Raw response:', data);
+
+        const transactions = Array.isArray(data) ? data : data.transactions || [];
+        totalPages = Array.isArray(data) 
+          ? Math.ceil(data.length / pageSize) 
+          : data.totalPages || Math.ceil(data.total / pageSize) || 1;
+
+        const startIndex = (page - 1) * pageSize;
+        const paginatedTransactions = Array.isArray(data) 
+          ? data.slice(startIndex, startIndex + pageSize) 
+          : transactions;
 
         const tbody = document.getElementById('transactionsBody');
         const errorDiv = document.getElementById('error');
         tbody.innerHTML = '';
         errorDiv.textContent = '';
 
-        if (!transactions || transactions.length === 0) {
+        if (!paginatedTransactions || paginatedTransactions.length === 0) {
           errorDiv.textContent = 'No transactions found.';
+          updatePagination();
           return;
         }
 
-        // Get selected accounts for custom calculation
+        console.log('Rendering transactions:', paginatedTransactions);
+
         const selectedAccounts = Array.from(document.querySelectorAll('.calc-checkbox:checked')).map(cb => ({
           name: cb.dataset.account,
           action: cb.dataset.action
         }));
 
-        transactions.forEach(txn => {
+        paginatedTransactions.forEach(txn => {
           let accountsBalance;
           try {
             accountsBalance = JSON.parse(txn.accounts_balance || '[]');
-            console.log(`Parsed accounts_balance for transaction ${txn.id}:`, accountsBalance);
           } catch (e) {
             console.error(`Error parsing accounts_balance for transaction ${txn.id}:`, e.message);
             accountsBalance = [];
           }
 
-          // Original accounts balance display
           const balanceDisplay = accountsBalance.length > 0
             ? accountsBalance.map(acc => `${acc.name}: ${acc.balance}`).join(', ')
             : 'None';
 
-          // Calculate custom balance
           let customBalance = 'Select accounts';
           if (selectedAccounts.length > 0) {
             customBalance = 0;
@@ -153,7 +210,7 @@
 
           const row = document.createElement('tr');
           row.innerHTML = `
-            <td>${txn.id || 'N/A'}</td>
+            <td><a href="/transactions/${txn.id}">${txn.id || 'N/A'}</a></td>
             <td>${txn.from_account || 'N/A'}</td>
             <td>${txn.to_account || 'N/A'}</td>
             <td>${txn.amount || 0}</td>
@@ -164,13 +221,54 @@
             <td>${txn.created_at || 'N/A'}</td>
             <td class="accounts-balance">${balanceDisplay}</td>
             <td class="custom-balance">${customBalance}</td>
+            <td>
+              <button class="edit-button" onclick="location.href='/transactions/${txn.id}/edit'">Edit</button>
+            </td>
           `;
           tbody.appendChild(row);
         });
+
+        updatePagination();
       } catch (error) {
         console.error('Error loading transactions:', error);
         document.getElementById('error').textContent = 'Error loading transactions: ' + error.message;
+        updatePagination();
       }
+    }
+
+    // Update pagination controls
+    function updatePagination() {
+      const pageNumbers = document.getElementById('pageNumbers');
+      const prevButton = document.getElementById('prevPage');
+      const nextButton = document.getElementById('nextPage');
+
+      prevButton.disabled = currentPage === 1;
+      nextButton.disabled = currentPage === totalPages;
+
+      pageNumbers.innerHTML = '';
+      const maxVisiblePages = 5;
+      let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+      let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+      if (endPage - startPage + 1 < maxVisiblePages) {
+        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+      }
+
+      for (let i = startPage; i <= endPage; i++) {
+        const button = document.createElement('button');
+        button.textContent = i;
+        button.style.margin = '0 5px';
+        button.style.fontWeight = i === currentPage ? 'bold' : 'normal';
+        button.addEventListener('click', () => loadTransactions(i));
+        pageNumbers.appendChild(button);
+      }
+
+      prevButton.onclick = () => {
+        if (currentPage > 1) loadTransactions(currentPage - 1);
+      };
+      nextButton.onclick = () => {
+        if (currentPage < totalPages) loadTransactions(currentPage + 1);
+      };
     }
 
     // Save checkbox selections to localStorage
@@ -187,10 +285,12 @@
     // Load accounts and transactions on page load
     window.onload = async () => {
       await loadAccounts();
-      await loadTransactions();
+      if (accounts.length > 0) {
+        await loadTransactions(currentPage);
+      } else {
+        document.getElementById('error').textContent = 'Cannot load transactions without accounts.';
+      }
     };
   </script>
-
-   
 </body>
 </html>

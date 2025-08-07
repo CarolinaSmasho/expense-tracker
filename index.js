@@ -232,6 +232,82 @@ app.post('/add-transaction', (req, res) => {
   });
 });
 
+
+app.get('/api/transactions/:id', (req, res) => {
+  const transactionId = req.params.id;
+  db.get(`SELECT * FROM transactions WHERE id = ?`, [transactionId], (err, row) => {
+    if (err) {
+      console.error('Error fetching transaction:', err.message);
+      return res.status(500).json({ error: `Error fetching transaction: ${err.message}` });
+    }
+    if (!row) {
+      return res.status(404).json({ error: `No transaction found with ID: ${transactionId}` });
+    }
+    console.log('Sending transaction data:', row);
+    const accountsBalance = JSON.parse(row.accounts_balance);
+    res.json({ transaction: row, accountsBalance });
+  });
+});
+
+// Endpoint สำหรับหน้า transaction
+app.get('/transactions/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'transaction-id.html'));
+});
+
+// Endpoint สำหรับหน้าแก้ไข transaction
+app.get('/transactions/:id/edit', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'edit_transaction.html'));
+});
+
+// API endpoint สำหรับอัพเดทข้อมูล transaction
+app.post('/api/transactions/:id', (req, res) => {
+  const transactionId = req.params.id;
+  const { from_account, to_account, amount, comment, category, type } = req.body;
+  
+  // ตรวจสอบว่าข้อมูลครบถ้วน
+  if (!from_account || !to_account || !amount || !category || !type) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  // อัพเดทข้อมูลในฐานข้อมูล
+  const query = `
+    UPDATE transactions 
+    SET from_account = ?, to_account = ?, amount = ?, comment = ?, category = ?, type = ?
+    WHERE id = ?
+  `;
+  db.run(query, [from_account, to_account, amount, comment || '', category, type, transactionId], (err) => {
+    if (err) {
+      console.error('Error updating transaction:', err.message);
+      return res.status(500).json({ error: `Error updating transaction: ${err.message}` });
+    }
+    console.log('Transaction updated:', { id: transactionId, from_account, to_account, amount, comment, category, type });
+    res.json({ message: 'Transaction updated successfully' });
+  });
+});
+
+// Endpoint สำหรับหน้า error
+app.get('/error.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'error.html'), {
+    headers: { 'X-Error-Message': 'An error occurred', 'X-Status': '500' }
+  });
+});
+
+// API endpoint สำหรับลบ transaction
+app.delete('/api/transactions/:id', (req, res) => {
+  const transactionId = req.params.id;
+  db.run(`DELETE FROM transactions WHERE id = ?`, [transactionId], function(err) {
+    if (err) {
+      console.error('Error deleting transaction:', err.message);
+      return res.status(500).json({ error: `Error deleting transaction: ${err.message}` });
+    }
+    if (this.changes === 0) {
+      return res.status(404).json({ error: `No transaction found with ID: ${transactionId}` });
+    }
+    console.log('Transaction deleted:', { id: transactionId });
+    res.json({ message: 'Transaction deleted successfully' });
+  });
+});
+
 // Get all accounts with current balance
 app.get('/accounts', (req, res) => {
   db.all(`SELECT name, current_balance FROM accounts`, [], (err, accounts) => {
